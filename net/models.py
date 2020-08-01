@@ -1,9 +1,53 @@
-from net.network import AttentionNet, Transform
+from net.network import AttentionNet, Correlation
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import net.utils as utils
 from net.utils import truncated_normal_, KMeans, project_features
+
+def calc_mean_std(feat, eps=1e-5):
+    # eps is a small value added to the variance to avoid divide-by-zero.
+    size = feat.size()
+    assert (len(size) == 4)
+    N, C = size[:2]
+    feat_var = feat.view(N, C, -1).var(dim=2) + eps
+    feat_std = feat_var.sqrt().view(N, C, 1, 1)
+    feat_mean = feat.view(N, C, -1).mean(dim=2).view(N, C, 1, 1)
+    return feat_mean, feat_std
+
+
+def mean_variance_norm(feat):
+    size = feat.size()
+    mean, std = calc_mean_std(feat)
+    normalized_feat = (feat - mean.expand(size)) / std.expand(size)
+    return normalized_feat
+
+class Transform(nn.Module):
+    def __init__(self, in_planes, self_attn):
+        super(Transform, self).__init__()
+        self.corr4_1 = Correlation(in_planes=in_planes, hidden_planes=in_planes)
+        self.corr5_1 = Correlation(in_planes=in_planes, hidden_planes=in_planes)
+        self.upsample5_1 = nn.Upsample(scale_factor=2, mode='nearest')
+
+        self.merge_conv_pad = nn.ReflectionPad2d((1, 1, 1, 1))
+        self.merge_conv = nn.Conv2d(in_planes, in_planes, (3, 3))
+
+        self.self_attn = self_attn
+
+    def
+
+    def forward(self, content4_1, style4_1, content5_1, style5_1):
+        feature_corr4_1 = self.corr4_1(content4_1, style4_1)
+        feature_corr5_1 = self.corr5_1(content5_1, style5_1)
+
+        _, content_attn4_1 = self.self_attn(content4_1)
+        _, style_attn4_1 = self.self_attn(style4_1)
+        _, content_attn5_1 = self.self_attn(content5_1)
+        _, style_attn5_1 = self.self_attn(style5_1)
+
+
+        return self.merge_conv(self.merge_conv_pad(
+            self.sanet4_1(content4_1, style4_1) + self.upsample5_1(self.sanet5_1(content5_1, style5_1))))
 
 class SAVA_test:
     def __init__(self, attention_net, transformer):

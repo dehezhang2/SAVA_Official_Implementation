@@ -196,6 +196,8 @@ class SAVANet(nn.Module):
         return attention_map
 
     def attn_corr(self, x, y):
+        x = torch.reshape(x, (x.shape[0], x.shape[1], -1))
+        y = torch.reshape(x, (x.shape[0], x.shape[1], -1))
         n_x = x.shape[-1]
         n_y = y.shape[-1]
         x = x.repeat(1, n_y, 1).permute(0, 2, 1)

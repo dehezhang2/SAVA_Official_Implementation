@@ -1,114 +1,117 @@
-from net.network import AttentionNet, Correlation
+from net.network import SelfAttention, SAVANet, Encoder
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import net.utils as utils
-from net.utils import truncated_normal_, KMeans, project_features
-
-def calc_mean_std(feat, eps=1e-5):
-    # eps is a small value added to the variance to avoid divide-by-zero.
-    size = feat.size()
-    assert (len(size) == 4)
-    N, C = size[:2]
-    feat_var = feat.view(N, C, -1).var(dim=2) + eps
-    feat_std = feat_var.sqrt().view(N, C, 1, 1)
-    feat_mean = feat.view(N, C, -1).mean(dim=2).view(N, C, 1, 1)
-    return feat_mean, feat_std
-
-
-def mean_variance_norm(feat):
-    size = feat.size()
-    mean, std = calc_mean_std(feat)
-    normalized_feat = (feat - mean.expand(size)) / std.expand(size)
-    return normalized_feat
+FEATURE_CHANNEL = 512
 
 class Transform(nn.Module):
-    def __init__(self, in_planes, self_attn):
+    def __init__(self, in_channel, self_attn = None):
         super(Transform, self).__init__()
-        self.corr4_1 = Correlation(in_planes=in_planes, hidden_planes=in_planes)
-        self.corr5_1 = Correlation(in_planes=in_planes, hidden_planes=in_planes)
+        self.savanet4_1 = SAVANet(in_channel=in_channel, self_attn = self_attn)
+        self.savanet5_1 = SAVANet(in_channel=in_channel, self_attn = self_attn)
         self.upsample5_1 = nn.Upsample(scale_factor=2, mode='nearest')
 
         self.merge_conv_pad = nn.ReflectionPad2d((1, 1, 1, 1))
-        self.merge_conv = nn.Conv2d(in_planes, in_planes, (3, 3))
+        self.merge_conv = nn.Conv2d(in_channel, in_channel, (3, 3))
 
-        self.self_attn = self_attn
-
-    def
+    def fusion(self, swapped4_1, swapped5_1):
+        return self.merge_conv( self.merge_conv_pad( swapped4_1 + self.upsample5_1(swapped5_1) ) )
 
     def forward(self, content4_1, style4_1, content5_1, style5_1):
-        feature_corr4_1 = self.corr4_1(content4_1, style4_1)
-        feature_corr5_1 = self.corr5_1(content5_1, style5_1)
+        swapped4_1, content_attn4_1, style_attn4_1= self.savanet4_1(content4_1, style4_1)
+        swapped5_1, content_attn5_1, style_attn5_1= self.savanet4_1(content5_1, style5_1)
+        fused = self.fusion(swapped4_1, swapped5_1)
+        return fused, content_attn4_1, style_attn4_1, content_attn5_1, style_attn5_1
 
-        _, content_attn4_1 = self.self_attn(content4_1)
-        _, style_attn4_1 = self.self_attn(style4_1)
-        _, content_attn5_1 = self.self_attn(content5_1)
-        _, style_attn5_1 = self.self_attn(style5_1)
-
-
-        return self.merge_conv(self.merge_conv_pad(
-            self.sanet4_1(content4_1, style4_1) + self.upsample5_1(self.sanet5_1(content5_1, style5_1))))
-
-class SAVA_test:
-    def __init__(self, attention_net, transformer):
-        self.attention_net = attention_net
-        self.encode = attention_net.get_encoder()
+class SAVA_test(nn.Module):
+    def __init__(self, transformer = None, encoder = None, decoder = None):
+        super(SAVA_test, self).__init__()
         self.transformer = transformer
+        self.encode = Encoder() if encoder == None else Encoder(encoder)
+        self.decode = decoder
 
-    def attention_filter(self, attention_feature_map, kernel_size=3, mean=6, stddev=5):
-        attention_map = torch.abs(attention_feature_map)
+        self.content_weight = 1.0
+        self.style_weight = 3.0
+        self.identity1_weight = 50
+        self.identity2_weight = 1.0
+        self.perceptual_loss_layers = ['conv1', 'conv2', 'conv3', 'conv4', 'conv5']
 
-        attention_mask = attention_map > 2 * torch.mean(attention_map)
-        attention_mask = attention_mask.float()
+        self.mse_loss = nn.MSELoss()
 
-        w = torch.randn(kernel_size, kernel_size)
-        truncated_normal_(w, mean, stddev)
-        w = w / torch.sum(w)
+    def calc_content_loss(self, x, y, norm = False):
+        if norm == False:
+            return self.mse_loss(x, y)
+        else:
+            x_norm_adain, _, _ = utils.project_features(x, "AdaIN")
+            y_norm_adain, _, _ = utils.project_features(y, "AdaIN")
+            return self.mse_loss(x_norm_adain, y_norm_adain)
+    
+    def calc_style_loss(self, x, y):
+        x_mean, x_std = utils.calc_mean_std(x)
+        y_mean, y_std = utils.calc_mean_std(y)
 
-        # [in_channels, out_channels, filter_height, filter_width]
-        w = torch.unsqueeze(w, 0)
-        w = w.repeat(attention_mask.shape[1], 1, 1)
+        return self.mse_loss(x_mean, y_mean) + \
+               self.mse_loss(x_std, y_std)
 
-        w = torch.unsqueeze(w, 0)
-        w = w.repeat(attention_mask.shape[1], 1, 1, 1)
+    def calc_void_loss(self, input, output):
+        pass
 
-        gaussian_filter = nn.Conv2d(attention_mask.shape[1], attention_mask.shape[1], (kernel_size, kernel_size))
-        gaussian_filter.weight.data = w
-        gaussian_filter.weight.requires_grad = False
-        pad_filter = nn.Sequential(
-            nn.ReflectionPad2d((1, 1, 1, 1)),
-            gaussian_filter
-        )
-        pad_filter.cuda()
-        attention_map = pad_filter(attention_mask)
-        attention_map = attention_map - torch.min(attention_map)
-        attention_map = attention_map / torch.max(attention_map)
-        return attention_map
+    def transfer(self, contents, styles):
+        content_features = self.encode(contents)
+        style_features = self.encode(styles)
 
-    def transfer(self, contents, styles, inter_weight=1, projection_method='ZCA'):
-        content_features = self.attention_net.encode(contents)
-        style_features = self.attention_net.encode(styles)
+        content_hidden_feature_4 = content_features[self.perceptual_loss_layers[-2]]
+        style_hidden_feature_4 = style_features[self.perceptual_loss_layers[-2]]
+        content_hidden_feature_5 = content_features[self.perceptual_loss_layers[-1]]
+        style_hidden_feature_5 = style_features[self.perceptual_loss_layers[-1]]
 
-        content_hidden_feature_4 = content_features[self.attention_net.perceptual_loss_layers[-2]]
-        style_hidden_feature_4 = style_features[self.attention_net.perceptual_loss_layers[-2]]
-        content_hidden_feature_5 = content_features[self.attention_net.perceptual_loss_layers[-1]]
-        style_hidden_feature_5 = style_features[self.attention_net.perceptual_loss_layers[-1]]
+        swapped_features, content_attn4_1, style_attn4_1, content_attn5_1, style_attn5_1 = self.transformer(content_hidden_feature_4, style_hidden_feature_4, content_hidden_feature_5, style_hidden_feature_5)
 
-        projected_content_features, content_kernels, mean_content_features = utils.project_features(
-            content_hidden_feature_4, projection_method)
-        projected_style_features, style_kernels, mean_style_features = utils.project_features(style_hidden_feature_4,
-                                                                                              projection_method)
+        output = self.decode(swapped_features)
+        return output, swapped_features, [content_attn4_1, style_attn4_1, content_attn5_1, style_attn5_1]
+    
+    def forward(self, contents, styles):
+        content_features = self.encode(contents)
+        style_features = self.encode(styles)
 
-        content_attention_map = self.attention_net.self_attn(projected_content_features)
-        style_attention_map = self.attention_net.self_attn(projected_style_features)
+        content_hidden_feature_4 = content_features[self.perceptual_loss_layers[-2]]
+        style_hidden_feature_4 = style_features[self.perceptual_loss_layers[-2]]
+        content_hidden_feature_5 = content_features[self.perceptual_loss_layers[-1]]
+        style_hidden_feature_5 = style_features[self.perceptual_loss_layers[-1]]
 
-        # projected_content_features = projected_content_features * content_attention_feature_map + projected_content_features
-        content_attention_map = self.attention_filter(content_attention_map)
-        style_attention_map = self.attention_filter(style_attention_map)
+        swapped_features, _, _, _, _ = self.transformer(content_hidden_feature_4, style_hidden_feature_4, content_hidden_feature_5, style_hidden_feature_5)
+        I_cs = self.decode(swapped_features)
+        F_cs = self.encode(I_cs)
 
-        swapped_features = self.transformer(content_hidden_feature_4, style_hidden_feature_4, content_hidden_feature_5, style_hidden_feature_5)
+        swapped_features, _, _, _, _ = self.transformer(content_hidden_feature_4, content_hidden_feature_4, content_hidden_feature_5, content_hidden_feature_5)
+        I_cc = self.decode(swapped_features)
+        F_cc = self.encode(I_cc)
 
-        output = self.attention_net.decode(swapped_features)
-        output = utils.batch_mean_image_subtraction(output)
+        swapped_features, _, _, _, _ = self.transformer(style_hidden_feature_4, style_hidden_feature_4, style_hidden_feature_5, style_hidden_feature_5)
+        I_ss = self.decode(swapped_features)
+        F_ss = self.encode(I_ss)
 
-        return output, content_attention_map, style_attention_map
+        loss_c = self.calc_content_loss(content_hidden_feature_4, F_cs['conv4'], norm=True) + \
+                 self.calc_content_loss(content_hidden_feature_5, F_cs['conv5'], norm=True)
+
+        loss_s = 0.0
+        for layer in self.perceptual_loss_layers:
+            loss_s += self.calc_style_loss(style_features[layer], F_cs[layer])
+
+        loss_identity1 = self.calc_content_loss(I_cc, contents) + self.calc_content_loss(I_ss, styles)
+
+        loss_identity2 = 0.0
+        for layer in self.perceptual_loss_layers:
+            loss_identity2 += self.calc_content_loss(F_cc[layer], content_features[layer]) + \
+                              self.calc_content_loss(F_ss[layer], style_features[layer])
+
+        total_loss = self.content_weight * loss_c + self.style_weight * loss_s + \
+                     self.identity1_weight * loss_identity1 + self.identity2_weight * loss_identity2
+        loss_dict = {'total': total_loss, 'content': loss_c, 'style': loss_s, 'identity1': loss_identity1, 'identity2': loss_identity2}
+        return loss_dict
+
+
+
+
+

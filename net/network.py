@@ -338,7 +338,7 @@ class AttentionNet(nn.Module):
     def forward(self, x, projection_method='ZCA'):
         # returns loss, output, residual
         # seperate must be False in this case
-        output, attention_feature_map = self.self_attention_autoencoder(x, projection_method = projection_method)
+        output, attention_feature_map, _ = self.self_attention_autoencoder(x, projection_method = projection_method)
         output = utils.batch_mean_image_subtraction(output)
 
         recon_loss = self.calc_recon_loss(x, output) * (255**2 / 4)

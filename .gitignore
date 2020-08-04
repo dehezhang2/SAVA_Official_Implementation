@@ -5,3 +5,4 @@ style_set
 __pycache__
 logs
 test_result
+.pth

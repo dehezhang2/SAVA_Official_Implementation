@@ -27,9 +27,9 @@ from net.models import Transform, SAVA_test
 
 parser = argparse.ArgumentParser()
 # Basic options
-parser.add_argument('--content_dir', type=str, default='./datasets/content_set/val2014',
+parser.add_argument('--content_dir', type=str, default='./datasets/content_set',
                     help='Directory path to a batch of content images')
-parser.add_argument('--style_dir', type=str, default='./datasets/style_set/val2014',
+parser.add_argument('--style_dir', type=str, default='./datasets/style_set',
                     help='Directory path to a batch of content images')
 parser.add_argument('--vgg_model', type=str, default='./models/vgg/vgg_normalised.pth')
 parser.add_argument('--attn_model', type=str, default='./models/attention_training/attention_kernel_iter_80000.pth')

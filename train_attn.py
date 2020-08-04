@@ -19,6 +19,7 @@ import os
 from tqdm import tqdm
 import time
 import math
+import json
 
 from net.network import AttentionNet, SelfAttention, vgg_reverse, vgg
 
@@ -39,8 +40,7 @@ parser.add_argument('--max_iter', type=int, default=80000)
 parser.add_argument('--batch_size', type=int, default=8)
 parser.add_argument('--n_threads', type=int, default=2)
 parser.add_argument('--save_model_interval', type=int, default=100)
-parser.add_argument('--start_iter', type=float, default=80000)
-parser.add_argument('--seperate', type=bool, default=False)
+parser.add_argument('--start_iter', type=float, default=0)
 args = parser.parse_args('')
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -118,7 +118,7 @@ if(args.start_iter > 0):
     state_to_device(attn, device)
     
     model = AttentionNet(attn=attn, encoder = encoder, decoder = decoder)
-    optimizer = get_optimizer(model, args.seperate)
+    optimizer = get_optimizer(model)
     optimizer.load_state_dict(torch.load(args.save_dir + '/optimizer_iter_' + str(args.start_iter) + '.pth'))
     for state in optimizer.state.values():
         for k, v in state.items():
@@ -126,7 +126,7 @@ if(args.start_iter > 0):
                 state[k] = v.cuda()
 else:
     model = AttentionNet(attn=attn, encoder = encoder, decoder = decoder)
-    optimizer = get_optimizer(model, args.seperate)
+    optimizer = get_optimizer(model)
 
 model.to(device)   
 loss_seq = {'total': [], 'construct': [], 'percept': [], 'tv': [], 'attn': []}
@@ -152,10 +152,9 @@ for i in tqdm(range(args.start_iter, args.max_iter)):
             train_set, batch_size=args.batch_size,
             shuffle=True, num_workers=args.n_threads)
         train_iter = iter(train_loader)
-        
-    if args.seperate == False:
-        content_images = next(train_iter).to(device)
-        losses, _, _ = model(content_images)
+
+    content_images = next(train_iter).to(device)
+    losses, _, _ = model(content_images)
         
     total_loss = losses['total']
     

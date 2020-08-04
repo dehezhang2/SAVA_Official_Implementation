@@ -50,10 +50,6 @@ args = parser.parse_args('')
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-_R_MEAN = 123.68
-_G_MEAN = 116.78
-_B_MEAN = 103.94
-
 # transforms.Normalize((0, 0, 0), (1/255.0, 1/255.0, 1/255.0))
 data_transforms = {
     'train': transforms.Compose([

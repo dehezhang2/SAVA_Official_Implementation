@@ -155,11 +155,12 @@ class SelfAttention(nn.Module):
 
 # SAVANet Module
 class SAVANet(nn.Module):
-    def __init__(self, in_channel = 512, self_attn = None):
+    def __init__(self, in_channel = 512, self_attn = None, alpha=0.5, filter=False):
         super(SAVANet, self).__init__()
         self.feat_corr = Correlation(in_channel = in_channel, hidden_channel = in_channel)
         self.h = nn.Conv2d(in_channel, in_channel, kernel_size=1)      # [b, c, h, w]
-        self.alpha = 0.5
+        self.alpha = alpha
+        self.filter = filter
 
         self.self_attn = self_attn
         self.softmax = nn.Softmax(dim=-1)
@@ -216,8 +217,9 @@ class SAVANet(nn.Module):
         feature_correlation, _ = self.feat_corr(x_norm_adain, y_norm_adain)
         _, atten_x = self.self_attn(x_norm_zca)
         _, atten_y = self.self_attn(y_norm_zca)
-        # atten_x = self.attention_filter(atten_x)
-        # atten_y = self.attention_filter(atten_y)
+        if self.fitler:
+            atten_x = self.attention_filter(atten_x)
+            atten_y = self.attention_filter(atten_y)
         attention_correlation = self.attn_corr(atten_x, atten_y)
         correlation = self.alpha * feature_correlation + (1 - self.alpha) * attention_correlation
 

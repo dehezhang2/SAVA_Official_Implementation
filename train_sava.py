@@ -41,11 +41,15 @@ parser.add_argument('--log_dir', default='./logs',
                     help='Directory to save the log')
 parser.add_argument('--lr', type=float, default=1e-4)
 parser.add_argument('--lr_decay', type=float, default=5e-5)
-parser.add_argument('--max_iter', type=int, default=160000)
-parser.add_argument('--batch_size', type=int, default=5)
+parser.add_argument('--max_iter', type=int, default=200000)
+parser.add_argument('--batch_size', type=int, default=4)
 parser.add_argument('--n_threads', type=int, default=16)
 parser.add_argument('--save_model_interval', type=int, default=1000)
 parser.add_argument('--start_iter', type=float, default=0)
+
+# hyperparameters
+parser.add_argument('--filter', type=float, default=True)
+parser.add_argument('--alpha', type=float, default=0.5)
 args = parser.parse_args('')
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -151,7 +155,7 @@ state_to_device(encoder, device)
 self_attn = SelfAttention()
 self_attn.load_state_dict(torch.load(args.attn_model))
 state_to_device(self_attn, device)
-transformer = Transform(in_channel = 512, self_attn=self_attn)
+transformer = Transform(in_channel = 512, self_attn=self_attn, alpha=args.alpha, filter=args.filter)
 
 decoder = vgg_reverse
 
@@ -193,7 +197,7 @@ content_reload_period = math.floor(content_reload_period)
 
 style_reload_period = len(style_loader.dataset) / args.batch_size
 style_reload_period = math.floor(style_reload_period)
-
+print(args.batch_size)
 for i in tqdm(range(args.start_iter, args.max_iter)):
     adjust_learning_rate(optimizer, iteration_count=i)
     

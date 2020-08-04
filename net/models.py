@@ -6,10 +6,10 @@ import net.utils as utils
 FEATURE_CHANNEL = 512
 
 class Transform(nn.Module):
-    def __init__(self, in_channel, self_attn = None):
+    def __init__(self, in_channel, self_attn = None, alpha=0.5, filter=False):
         super(Transform, self).__init__()
-        self.savanet4_1 = SAVANet(in_channel=in_channel, self_attn = self_attn)
-        self.savanet5_1 = SAVANet(in_channel=in_channel, self_attn = self_attn)
+        self.savanet4_1 = SAVANet(in_channel=in_channel, self_attn = self_attn, alpha=alpha, filter = filter)
+        self.savanet5_1 = SAVANet(in_channel=in_channel, self_attn = self_attn, alpha=alpha, filter = filter)
         self.upsample5_1 = nn.Upsample(scale_factor=2, mode='nearest')
 
         self.merge_conv_pad = nn.ReflectionPad2d((1, 1, 1, 1))

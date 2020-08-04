@@ -5,4 +5,8 @@ style_set
 __pycache__
 logs
 test_result
-.pth
+models
+submit_attn.condor
+submit_sava.condor
+submit_sava_1.condor
+log

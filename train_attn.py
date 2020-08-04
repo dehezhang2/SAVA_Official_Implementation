@@ -110,7 +110,7 @@ state_to_device(encoder, device)
 
 decoder = vgg_reverse
 attn = SelfAttention()
-if(args.start_iter > 0):
+if args.start_iter > 0:
     decoder.load_state_dict(torch.load(args.save_dir + '/decoder_iter_' + str(args.start_iter) + '.pth'))
     state_to_device(decoder, device)
     

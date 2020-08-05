@@ -209,17 +209,23 @@ class SAVANet(nn.Module):
 
     def forward(self, x, y):
         x_size = x.shape
+        y_size = y.shape
         x_norm_adain, _, _ = utils.project_features(x, "AdaIN")
         y_norm_adain, _, _ = utils.project_features(y, "AdaIN")
         x_norm_zca, _, _ = utils.project_features(x, "ZCA")
         y_norm_zca, _, _ = utils.project_features(y, "ZCA")
 
         feature_correlation, _ = self.feat_corr(x_norm_adain, y_norm_adain)
+
         _, atten_x = self.self_attn(x_norm_zca)
         _, atten_y = self.self_attn(y_norm_zca)
-        if self.fitler:
+        # atten_x = atten_x.view(x_size[0], 1, x_size[2], x_size[3])
+        # atten_y = atten_y.view(y_size[0], 1, y_size[2], y_size[3])
+        if self.filter:
             atten_x = self.attention_filter(atten_x)
             atten_y = self.attention_filter(atten_y)
+            atten_x /= atten_x.sum()
+            atten_y /= atten_y.sum()
         attention_correlation = self.attn_corr(atten_x, atten_y)
         correlation = self.alpha * feature_correlation + (1 - self.alpha) * attention_correlation
 

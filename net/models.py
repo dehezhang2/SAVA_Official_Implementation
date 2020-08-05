@@ -6,7 +6,7 @@ import net.utils as utils
 FEATURE_CHANNEL = 512
 
 class Transform(nn.Module):
-    def __init__(self, in_channel, self_attn = None, alpha=0.5, filter=False):
+    def __init__(self, in_channel = 512, self_attn = None, alpha=0.5, filter=False):
         super(Transform, self).__init__()
         self.savanet4_1 = SAVANet(in_channel=in_channel, self_attn = self_attn, alpha=alpha, filter = filter)
         self.savanet5_1 = SAVANet(in_channel=in_channel, self_attn = self_attn, alpha=alpha, filter = filter)

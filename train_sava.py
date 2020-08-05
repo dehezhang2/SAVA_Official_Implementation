@@ -45,12 +45,12 @@ parser.add_argument('--max_iter', type=int, default=200000)
 parser.add_argument('--batch_size', type=int, default=4)
 parser.add_argument('--n_threads', type=int, default=16)
 parser.add_argument('--save_model_interval', type=int, default=1000)
-parser.add_argument('--start_iter', type=float, default=0)
+parser.add_argument('--start_iter', type=int, default=0)
 
 # hyperparameters
-parser.add_argument('--filter', type=float, default=True)
+parser.add_argument('--filter', action='store_true', default=False)
 parser.add_argument('--alpha', type=float, default=0.5)
-args = parser.parse_args('')
+args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

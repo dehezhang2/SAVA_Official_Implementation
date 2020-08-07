@@ -4,6 +4,23 @@ import torchvision
 import net.utils as utils
 FEATURE_CHANNEL = 512
 
+def calc_mean_std(feat, eps=1e-5):
+    # eps is a small value added to the variance to avoid divide-by-zero.
+    size = feat.size()
+    assert (len(size) == 4)
+    N, C = size[:2]
+    feat_var = feat.view(N, C, -1).var(dim=2) + eps
+    feat_std = feat_var.sqrt().view(N, C, 1, 1)
+    feat_mean = feat.view(N, C, -1).mean(dim=2).view(N, C, 1, 1)
+    return feat_mean, feat_std
+
+
+def mean_variance_norm(feat):
+    size = feat.size()
+    mean, std = calc_mean_std(feat)
+    normalized_feat = (feat - mean.expand(size)) / std.expand(size)
+    return normalized_feat
+
 vgg = nn.Sequential(
     nn.Conv2d(3, 3, (1, 1)),
     nn.ReflectionPad2d((1, 1, 1, 1)),
@@ -61,35 +78,35 @@ vgg = nn.Sequential(
 )
 
 vgg_reverse = nn.Sequential(
-        nn.ReflectionPad2d((1, 1, 1, 1)),
-        nn.Conv2d(512, 256, (3, 3)),
-        nn.ReLU(),
-        nn.Upsample(scale_factor=2, mode='nearest'),
-        nn.ReflectionPad2d((1, 1, 1, 1)),
-        nn.Conv2d(256, 256, (3, 3)),
-        nn.ReLU(),
-        nn.ReflectionPad2d((1, 1, 1, 1)),
-        nn.Conv2d(256, 256, (3, 3)),
-        nn.ReLU(),
-        nn.ReflectionPad2d((1, 1, 1, 1)),
-        nn.Conv2d(256, 256, (3, 3)),
-        nn.ReLU(),
-        nn.ReflectionPad2d((1, 1, 1, 1)),
-        nn.Conv2d(256, 128, (3, 3)),
-        nn.ReLU(),
-        nn.Upsample(scale_factor=2, mode='nearest'),
-        nn.ReflectionPad2d((1, 1, 1, 1)),
-        nn.Conv2d(128, 128, (3, 3)),
-        nn.ReLU(),
-        nn.ReflectionPad2d((1, 1, 1, 1)),
-        nn.Conv2d(128, 64, (3, 3)),
-        nn.ReLU(),
-        nn.Upsample(scale_factor=2, mode='nearest'),
-        nn.ReflectionPad2d((1, 1, 1, 1)),
-        nn.Conv2d(64, 64, (3, 3)),
-        nn.ReLU(),
-        nn.ReflectionPad2d((1, 1, 1, 1)),
-        nn.Conv2d(64, 3, (3, 3)),
+    nn.ReflectionPad2d((1, 1, 1, 1)),
+    nn.Conv2d(512, 256, (3, 3)),
+    nn.ReLU(),
+    nn.Upsample(scale_factor=2, mode='nearest'),
+    nn.ReflectionPad2d((1, 1, 1, 1)),
+    nn.Conv2d(256, 256, (3, 3)),
+    nn.ReLU(),
+    nn.ReflectionPad2d((1, 1, 1, 1)),
+    nn.Conv2d(256, 256, (3, 3)),
+    nn.ReLU(),
+    nn.ReflectionPad2d((1, 1, 1, 1)),
+    nn.Conv2d(256, 256, (3, 3)),
+    nn.ReLU(),
+    nn.ReflectionPad2d((1, 1, 1, 1)),
+    nn.Conv2d(256, 128, (3, 3)),
+    nn.ReLU(),
+    nn.Upsample(scale_factor=2, mode='nearest'),
+    nn.ReflectionPad2d((1, 1, 1, 1)),
+    nn.Conv2d(128, 128, (3, 3)),
+    nn.ReLU(),
+    nn.ReflectionPad2d((1, 1, 1, 1)),
+    nn.Conv2d(128, 64, (3, 3)),
+    nn.ReLU(),
+    nn.Upsample(scale_factor=2, mode='nearest'),
+    nn.ReflectionPad2d((1, 1, 1, 1)),
+    nn.Conv2d(64, 64, (3, 3)),
+    nn.ReLU(),
+    nn.ReflectionPad2d((1, 1, 1, 1)),
+    nn.Conv2d(64, 3, (3, 3)),
     )
 
 # Encoder
@@ -198,7 +215,7 @@ class SAVANet(nn.Module):
 
     def attn_corr(self, x, y):
         x = torch.reshape(x, (x.shape[0], x.shape[1], -1))
-        y = torch.reshape(x, (x.shape[0], x.shape[1], -1))
+        y = torch.reshape(y, (y.shape[0], y.shape[1], -1))
         n_x = x.shape[-1]
         n_y = y.shape[-1]
         x = x.repeat(1, n_y, 1).permute(0, 2, 1)
@@ -209,17 +226,25 @@ class SAVANet(nn.Module):
 
     def forward(self, x, y):
         x_size = x.shape
+        y_size = y.shape
         x_norm_adain, _, _ = utils.project_features(x, "AdaIN")
         y_norm_adain, _, _ = utils.project_features(y, "AdaIN")
         x_norm_zca, _, _ = utils.project_features(x, "ZCA")
         y_norm_zca, _, _ = utils.project_features(y, "ZCA")
+        # x_norm_zca = utils.whitening(x)
+        # y_norm_zca = utils.whitening(y)
 
         feature_correlation, _ = self.feat_corr(x_norm_adain, y_norm_adain)
+
         _, atten_x = self.self_attn(x_norm_zca)
         _, atten_y = self.self_attn(y_norm_zca)
-        if self.fitler:
+        # atten_x = atten_x.view(x_size[0], 1, x_size[2], x_size[3])
+        # atten_y = atten_y.view(y_size[0], 1, y_size[2], y_size[3])
+        if self.filter:
             atten_x = self.attention_filter(atten_x)
             atten_y = self.attention_filter(atten_y)
+            atten_x /= atten_x.sum()
+            atten_y /= atten_y.sum()
         attention_correlation = self.attn_corr(atten_x, atten_y)
         correlation = self.alpha * feature_correlation + (1 - self.alpha) * attention_correlation
 
@@ -231,6 +256,163 @@ class SAVANet(nn.Module):
 
         output = x + residual
         return output, atten_x, atten_y
+
+class SAVANet_test(nn.Module):
+    def __init__(self, in_channel = 512, self_attn = None, alpha=0.5, filter=False, sanet = None):
+        super(SAVANet_test, self).__init__()
+        self.f = sanet.f
+        self.g = sanet.g
+        self.h = sanet.h
+        self.softmax = nn.Softmax(dim=-1)
+        self.out_conv = sanet.out_conv
+        self.self_attn = self_attn
+        self.sanet = sanet
+        
+        self.filter = filter
+        self.alpha = alpha
+
+    def attention_filter(self, attention_feature_map, kernel_size=3, mean=6, stddev=5):
+        attention_map = torch.abs(attention_feature_map)
+
+        attention_mask = attention_map > 2 * torch.mean(attention_map)
+        attention_mask = attention_mask.float()
+
+        w = torch.randn(kernel_size, kernel_size)
+        utils.truncated_normal_(w, mean, stddev)
+        w = w / torch.sum(w)
+
+        # [in_channels, out_channels, filter_height, filter_width]
+        w = torch.unsqueeze(w, 0)
+        w = w.repeat(attention_mask.shape[1], 1, 1)
+
+        w = torch.unsqueeze(w, 0)
+        w = w.repeat(attention_mask.shape[1], 1, 1, 1)
+
+        gaussian_filter = nn.Conv2d(attention_mask.shape[1], attention_mask.shape[1], (kernel_size, kernel_size))
+        gaussian_filter.weight.data = w
+        gaussian_filter.weight.requires_grad = False
+        pad_filter = nn.Sequential(
+            nn.ReflectionPad2d((1, 1, 1, 1)),
+            gaussian_filter
+        )
+        pad_filter.cuda()
+        attention_map = pad_filter(attention_mask)
+        attention_map = attention_map - torch.min(attention_map)
+        attention_map = attention_map / torch.max(attention_map)
+        return attention_map
+
+    def feat_corr(self, x, y):
+        F = self.f(x)
+        G = self.g(y)
+        b, c, h, w = F.size()
+        F = F.view(b, -1, w * h).permute(0, 2, 1)
+        b, c, h, w = G.size()
+        G = G.view(b, -1, w * h)
+        S = torch.bmm(F, G)
+        S = self.softmax(S)
+        return S
+
+    def attn_corr(self, x, y):
+        x = torch.reshape(x, (x.shape[0], x.shape[1], -1))
+        y = torch.reshape(y, (y.shape[0], y.shape[1], -1))
+        n_x = x.shape[-1]
+        n_y = y.shape[-1]
+        x = x.repeat(1, n_y, 1).permute(0, 2, 1)
+        y = y.repeat(1, n_x, 1)
+        dist = torch.abs(x - y)
+        correlation = self.softmax(1.0 - dist)
+        return correlation
+
+    def forward(self, x, y):
+        x_size = x.shape
+        y_size = y.shape
+        x_norm_adain, _, _ = utils.project_features(x, "AdaIN")
+        y_norm_adain, _, _ = utils.project_features(y, "AdaIN")
+        x_norm_zca, _, _ = utils.project_features(x, "ZCA")
+        y_norm_zca, _, _ = utils.project_features(y, "ZCA")
+        feature_correlation = self.feat_corr(x_norm_adain, y_norm_adain)
+
+        _, atten_x = self.self_attn(x_norm_zca)
+        _, atten_y = self.self_attn(y_norm_zca)
+        # atten_x = atten_x.view(x_size[0], 1, x_size[2], x_size[3])
+        # atten_y = atten_y.view(y_size[0], 1, y_size[2], y_size[3])
+        if self.filter:
+            atten_x = self.attention_filter(atten_x)
+            atten_y = self.attention_filter(atten_y)
+            atten_x /= atten_x.sum()
+            atten_y /= atten_y.sum()
+        attention_correlation = self.attn_corr(atten_x, atten_y)
+
+        correlation = self.alpha * feature_correlation + (1 - self.alpha) * attention_correlation
+
+        h = utils.hw_flatten(self.h(y)) # [b, c, ns]
+
+        residual = torch.bmm(h, correlation.permute(0, 2, 1)) # [b, c, nc]
+        residual = residual.view(x_size)# [b, c, hc, wc]
+        residual = self.out_conv(residual)
+
+        output = x + residual
+        return output, atten_x, atten_y
+
+
+
+# class SANet(nn.Module): 
+#     def __init__(self, in_channel = 512):
+#         super(SANet, self).__init__()
+#         self.feat_corr = Correlation(in_channel = in_channel, hidden_channel = in_channel)
+#         self.h = nn.Conv2d(in_channel, in_channel, kernel_size=1)      # [b, c, h, w]
+
+#         self.softmax = nn.Softmax(dim=-1)
+#         self.out_conv = nn.Conv2d(in_channel, in_channel, (1, 1))
+#     def forward(self, x, y):
+#         x_size = x.shape
+#         x_norm_adain, _, _ = utils.project_features(x, "AdaIN")
+#         y_norm_adain, _, _ = utils.project_features(y, "AdaIN")
+#         # x_norm_zca, _, _ = utils.project_features(x, "ZCA")
+#         # y_norm_zca, _, _ = utils.project_features(y, "ZCA")
+
+#         feature_correlation, _ = self.feat_corr(x_norm_adain, y_norm_adain)
+
+#         correlation = feature_correlation
+
+#         h = utils.hw_flatten(self.h(y)) # [b, c, ns]
+
+#         residual = torch.bmm(h, correlation.permute(0, 2, 1)) # [b, c, nc]
+#         residual = residual.view(x_size)# [b, c, hc, wc]
+#         residual = self.out_conv(residual)
+
+#         output = x + residual
+#         return output
+
+class SANet(nn.Module):
+    def __init__(self, in_channel):
+        super(SANet, self).__init__()
+        self.f = nn.Conv2d(in_channel, in_channel, (1, 1))
+        self.g = nn.Conv2d(in_channel, in_channel, (1, 1))
+        self.h = nn.Conv2d(in_channel, in_channel, (1, 1))
+        self.sm = nn.Softmax(dim=-1)
+        self.out_conv = nn.Conv2d(in_channel, in_channel, (1, 1))
+
+    def forward(self, content, style):
+        F = self.f(mean_variance_norm(content))
+        G = self.g(mean_variance_norm(style))
+        H = self.h(style)
+        
+        b, c, h, w = F.size()
+        F = F.view(b, -1, w * h).permute(0, 2, 1)
+        b, c, h, w = G.size()
+        G = G.view(b, -1, w * h)
+        S = torch.bmm(F, G)
+        S = self.sm(S)
+        
+        b, c, h, w = H.size()
+        H = H.view(b, -1, w * h)
+        O = torch.bmm(H, S.permute(0, 2, 1))
+        b, c, h, w = content.size()
+        O = O.view(b, c, h, w)
+        O = self.out_conv(O)
+        O += content
+        return O
 
 # Reconstruction Network with Self-attention Module
 class AttentionNet(nn.Module):
@@ -253,13 +435,20 @@ class AttentionNet(nn.Module):
     def get_encoder(self):
         return self.encode
 
-    def self_attention_autoencoder(self, x, projection_method='ZCA'): # in case kernels are not seperated
+    def self_attention_autoencoder(self, x, projection_method='ZCA', mode = 'add_multiply'): # in case kernels are not seperated
         input_features = self.encode(x)
         projected_hidden_feature, colorization_kernels, mean_features = utils.project_features(input_features['conv4'], projection_method)
+        # projected_hidden_feature = utils.whitening(input_features['conv4'])
+        # print("haha")
         residual, attention = self.self_attn(projected_hidden_feature)
 
-        hidden_feature = projected_hidden_feature * residual + projected_hidden_feature
+        if mode == 'add_multiply':
+            hidden_feature = projected_hidden_feature * residual + projected_hidden_feature
+        elif mode == 'add':
+            hidden_feature = residual + projected_hidden_feature
+
         hidden_feature = utils.reconstruct_features(hidden_feature, colorization_kernels, mean_features, projection_method)
+
 
         output = self.decode(hidden_feature)
         return output, residual, attention
@@ -337,10 +526,10 @@ class AttentionNet(nn.Module):
         attention_feature_map = self.attention_filter(attention_feature_map)
         return loss_dict, output, attention_feature_map, attention_map
 
-    def forward(self, x, projection_method='ZCA'):
+    def forward(self, x, projection_method='ZCA', mode='add_multiply'):
         # returns loss, output, residual
         # seperate must be False in this case
-        output, attention_feature_map, _ = self.self_attention_autoencoder(x, projection_method = projection_method)
+        output, attention_feature_map, _ = self.self_attention_autoencoder(x, projection_method = projection_method, mode = mode)
         output = utils.batch_mean_image_subtraction(output)
 
         recon_loss = self.calc_recon_loss(x, output) * (255**2 / 4)
@@ -354,6 +543,5 @@ class AttentionNet(nn.Module):
         return loss_dict, output, attention_feature_map
 
 
-    
-    
+
 

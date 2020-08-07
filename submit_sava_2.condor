@@ -1,0 +1,19 @@
+####################
+##
+## Condor Submission File
+## run_hello_multi.condor
+####################
+
+### DEFAULT SETTINGS #########################
+priority        = 0
+getenv          = True
+
+
+### JOB ###########################
+executable      = /home/bsft17/dehezhang2/anaconda3/bin/python
+arguments       = train_sava.py --alpha 0.75 --save_dir ./models/sava_training_75
+output          = log/sava_2/output_sava_alpha_75.txt
+error           = log/sava_2/error_sava_alpha_75.txt
+log             = log/sava_2/run_sava_alpha_75.log
+
+queue

@@ -25,12 +25,12 @@ from net.network import AttentionNet, SelfAttention, vgg_reverse, vgg
 
 parser = argparse.ArgumentParser()
 # Basic options
-parser.add_argument('--dataset_dir', type=str, default='./datasets/content_set',
+parser.add_argument('--dataset_dir', type=str, default='./datasets/content_style_mix_set/val2014',
                     help='Directory path to a batch of content images')
 parser.add_argument('--vgg_model', type=str, default='./models/vgg/vgg_normalised.pth')
 
 # training options
-parser.add_argument('--save_dir', default='./models/attention_training',
+parser.add_argument('--save_dir', default='./models/adain_add_attn',
                     help='Directory to save the model')
 parser.add_argument('--log_dir', default='./logs',
                     help='Directory to save the log')
@@ -41,7 +41,7 @@ parser.add_argument('--batch_size', type=int, default=8)
 parser.add_argument('--n_threads', type=int, default=2)
 parser.add_argument('--save_model_interval', type=int, default=100)
 parser.add_argument('--start_iter', type=float, default=0)
-args = parser.parse_args('')
+args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -154,7 +154,7 @@ for i in tqdm(range(args.start_iter, args.max_iter)):
         train_iter = iter(train_loader)
 
     content_images = next(train_iter).to(device)
-    losses, _, _ = model(content_images)
+    losses, _, _ = model(content_images, projection_method='AdaIN',  mode='add')
         
     total_loss = losses['total']
     

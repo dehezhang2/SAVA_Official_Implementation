@@ -27,21 +27,21 @@ from net.models import Transform, SAVA_test
 
 parser = argparse.ArgumentParser()
 # Basic options
-parser.add_argument('--content_dir', type=str, default='./datasets/content_set',
+parser.add_argument('--content_dir', type=str, default='./datasets/overfit/content',
                     help='Directory path to a batch of content images')
-parser.add_argument('--style_dir', type=str, default='./datasets/style_set',
+parser.add_argument('--style_dir', type=str, default='./datasets/overfit/style',
                     help='Directory path to a batch of content images')
 parser.add_argument('--vgg_model', type=str, default='./models/vgg/vgg_normalised.pth')
 parser.add_argument('--attn_model', type=str, default='./models/attention_training/attention_kernel_iter_80000.pth')
 
 # training options
-parser.add_argument('--save_dir', default='./models/sava_training',
+parser.add_argument('--save_dir', default='./models/overfit_20000',
                     help='Directory to save the model')
 parser.add_argument('--log_dir', default='./logs',
                     help='Directory to save the log')
 parser.add_argument('--lr', type=float, default=1e-4)
 parser.add_argument('--lr_decay', type=float, default=5e-5)
-parser.add_argument('--max_iter', type=int, default=200000)
+parser.add_argument('--max_iter', type=int, default=20000)
 parser.add_argument('--batch_size', type=int, default=4)
 parser.add_argument('--n_threads', type=int, default=16)
 parser.add_argument('--save_model_interval', type=int, default=1000)

@@ -1,13 +1,11 @@
 .ipynb_checkpoints
 content_set
 content_style_mix_set
+overfit
 style_set
 __pycache__
 logs
 test_result
 models
-submit_attn.condor
-submit_sava.condor
-submit_sava_1.condor
-submit_sava_2.condor
 log
+*.condor

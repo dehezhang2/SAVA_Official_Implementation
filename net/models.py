@@ -20,7 +20,7 @@ class Transform(nn.Module):
 
     def forward(self, content4_1, style4_1, content5_1, style5_1):
         swapped4_1, content_attn4_1, style_attn4_1= self.savanet4_1(content4_1, style4_1)
-        swapped5_1, content_attn5_1, style_attn5_1= self.savanet4_1(content5_1, style5_1)
+        swapped5_1, content_attn5_1, style_attn5_1= self.savanet5_1(content5_1, style5_1)
         fused = self.fusion(swapped4_1, swapped5_1)
         return fused, content_attn4_1, style_attn4_1, content_attn5_1, style_attn5_1
 

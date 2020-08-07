@@ -25,12 +25,12 @@ from net.network import AttentionNet, SelfAttention, vgg_reverse, vgg
 
 parser = argparse.ArgumentParser()
 # Basic options
-parser.add_argument('--dataset_dir', type=str, default='./datasets/content_style_mix_set/val2014',
+parser.add_argument('--dataset_dir', type=str, default='../style-transfer-with-style-attention/datasets/content_style_mix_set/val2014',
                     help='Directory path to a batch of content images')
 parser.add_argument('--vgg_model', type=str, default='./models/vgg/vgg_normalised.pth')
 
 # training options
-parser.add_argument('--save_dir', default='./models/adain_add_attn',
+parser.add_argument('--save_dir', default='./models/adain_add_wo_hx_attn',
                     help='Directory to save the model')
 parser.add_argument('--log_dir', default='./logs',
                     help='Directory to save the log')

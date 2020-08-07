@@ -143,10 +143,10 @@ class SelfAttention(nn.Module):
         self.corr = Correlation(in_channel = in_channel, hidden_channel = in_channel//2)
         self.h = nn.Conv2d(in_channel, in_channel, kernel_size=1)      # [b, c, h, w]
 
-    def forward(self, x):
+    def forward(self, x, colorization_kernels, mean_features, projection_method='AdaIN'):
         x_size = x.shape
         correlation, attention = self.corr(x, x)
-        h = utils.hw_flatten(self.h(x)) # [b, c, ns]
+        h = utils.hw_flatten(self.h(utils.reconstruct_features(x, colorization_kernels, mean_features, reconstruction_module=projection_method))) # [b, c, ns]
 
         residual = torch.bmm(h, correlation.permute(0, 2, 1)) # [b, c, nc]
         residual = residual.view(x_size)# [b, c, h, w]
@@ -294,7 +294,7 @@ class AttentionNet(nn.Module):
         projected_hidden_feature, colorization_kernels, mean_features = utils.project_features(input_features['conv4'], projection_method)
         # projected_hidden_feature = utils.whitening(input_features['conv4'])
         # print("haha")
-        residual, attention = self.self_attn(projected_hidden_feature)
+        residual, attention = self.self_attn(projected_hidden_feature, colorization_kernels, mean_features, projection_method=projection_method)
 
         if mode == 'add_multiply':
             hidden_feature = projected_hidden_feature * residual + projected_hidden_feature

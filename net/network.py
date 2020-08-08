@@ -140,16 +140,19 @@ class Correlation(nn.Module):
 class SelfAttention(nn.Module):
     def __init__(self, in_channel = 512):
         super(SelfAttention, self).__init__()
-        self.corr = Correlation(in_channel = in_channel, hidden_channel = in_channel//2)
+        self.corr = Correlation(in_channel = in_channel, hidden_channel = in_channel)
         self.h = nn.Conv2d(in_channel, in_channel, kernel_size=1)      # [b, c, h, w]
+        self.out_conv = nn.Conv2d(in_channel, in_channel, (1, 1))
 
-    def forward(self, x, colorization_kernels, mean_features, projection_method='AdaIN'):
+    def forward(self, x, projection_method='AdaIN'):
         x_size = x.shape
-        correlation, attention = self.corr(x, x)
-        h = utils.hw_flatten(self.h(utils.reconstruct_features(x, colorization_kernels, mean_features, reconstruction_module=projection_method))) # [b, c, ns]
+        x_norm, _, _ = utils.project_features(x, projection_module=projection_method)
+        correlation, attention = self.corr(x_norm, x_norm)
+        h = utils.hw_flatten(self.h(x)) # [b, c, ns]
 
         residual = torch.bmm(h, correlation.permute(0, 2, 1)) # [b, c, nc]
         residual = residual.view(x_size)# [b, c, h, w]
+        residual = self.out_conv(residual)
         attention = attention.view(x_size[0], 1, x_size[2], x_size[3])
         return residual, attention
 
@@ -263,7 +266,7 @@ class SANet(nn.Module):
 
         residual = torch.bmm(h, correlation.permute(0, 2, 1)) # [b, c, nc]
         residual = residual.view(x_size)# [b, c, hc, wc]
-        residual = self.out_conv(residual)
+        residual = self.out_conv(residual) 
 
         output = x + residual
         return output
@@ -291,18 +294,16 @@ class AttentionNet(nn.Module):
 
     def self_attention_autoencoder(self, x, projection_method='AdaIN', mode = 'add_multiply'): # in case kernels are not seperated
         input_features = self.encode(x)
-        projected_hidden_feature, colorization_kernels, mean_features = utils.project_features(input_features['conv4'], projection_method)
+        hidden_feature = input_features['conv4']
+        # projected_hidden_feature, colorization_kernels, mean_features = utils.project_features(input_features['conv4'], projection_method)
         # projected_hidden_feature = utils.whitening(input_features['conv4'])
         # print("haha")
-        residual, attention = self.self_attn(projected_hidden_feature, colorization_kernels, mean_features, projection_method=projection_method)
+        residual, attention = self.self_attn(hidden_feature, projection_method=projection_method)
 
         if mode == 'add_multiply':
-            hidden_feature = projected_hidden_feature * residual + projected_hidden_feature
+            hidden_feature = hidden_feature * residual + hidden_feature
         elif mode == 'add':
-            hidden_feature = residual + projected_hidden_feature
-
-        hidden_feature = utils.reconstruct_features(hidden_feature, colorization_kernels, mean_features, projection_method)
-
+            hidden_feature = residual + hidden_feature
 
         output = self.decode(hidden_feature)
         return output, residual, attention

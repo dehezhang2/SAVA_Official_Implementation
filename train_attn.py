@@ -154,7 +154,7 @@ for i in tqdm(range(args.start_iter, args.max_iter)):
         train_iter = iter(train_loader)
 
     content_images = next(train_iter).to(device)
-    losses, _, _ = model(content_images, projection_method='AdaIN',  mode='add')
+    losses, _, _ = model(content_images, projection_method='AdaIN', mode='add')
         
     total_loss = losses['total']
     

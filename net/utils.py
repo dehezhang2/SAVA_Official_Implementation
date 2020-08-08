@@ -34,6 +34,41 @@ def adain_normalization(features):
 def adain_colorization(normalized_features, colorization_kernels, mean_features):
     return colorization_kernels * normalized_features + mean_features
 
+def zca(features):
+    # [b, c, h, w]
+    shape = features.shape
+
+    # reshape the features to orderless feature vectors
+    mean_features = torch.mean(features, dim=(2, 3), keepdims=True)
+    unbiased_features = (features - mean_features).view(shape[0], shape[1], -1) # [b, c, h*w]
+
+    # get the convariance matrix
+    gram = torch.bmm(unbiased_features, unbiased_features.permute(0, 2, 1)) # [b, c, c]
+    gram = gram / (shape[1] * shape[2] * shape[3])
+
+    # converting the feature spaces
+    u, s, v = torch.svd(gram.cpu(), compute_uv=True)
+    # u: [b, c, c], s: [b, c], v: [b, c, c]
+    s = torch.unsqueeze(s, dim=1)
+
+    # get the effective singular values
+    valid_index = (s > 0.00001).float()
+    temp = torch.empty(s.shape).fill_(0.00001)
+    s_effective = torch.max( s,  temp)
+    sqrt_inv_s_effective = torch.sqrt(1.0 / s_effective) * valid_index
+
+    sqrt_inv_s_effective = sqrt_inv_s_effective.cuda()
+    u = u.cuda()
+    v = v.cuda()
+
+    # normalized features
+    normalized_features = torch.bmm(u.permute(0, 2, 1), unbiased_features)
+    normalized_features = sqrt_inv_s_effective.permute(0, 2, 1) * normalized_features
+    normalized_features = torch.bmm(v, normalized_features)
+    normalized_features = normalized_features.view(shape)
+    
+    return normalized_features
+
 def zca_normalization(features):
     # [b, c, h, w]
     shape = features.shape
@@ -47,26 +82,30 @@ def zca_normalization(features):
     gram = gram / (shape[1] * shape[2] * shape[3])
 
     # converting the feature spaces
-    u, s, v = torch.svd(gram, compute_uv=True)
+    u, s, v = torch.svd(gram.cpu(), compute_uv=True)
     # u: [b, c, c], s: [b, c], v: [b, c, c]
     s = torch.unsqueeze(s, dim=1)
 
     # get the effective singular values
     valid_index = (s > 0.00001).float()
-    temp = torch.empty(s.shape).fill_(0.00001).cuda()
+    temp = torch.empty(s.shape).fill_(0.00001)
     s_effective = torch.max( s,  temp)
     sqrt_s_effective = torch.sqrt(s_effective) * valid_index
     sqrt_inv_s_effective = torch.sqrt(1.0 / s_effective) * valid_index
+
+    sqrt_inv_s_effective = sqrt_inv_s_effective.cuda()
+    sqrt_s_effective = sqrt_s_effective.cuda()
+    u = u.cuda()
+    v = v.cuda()
 
     # colorization functions
     colorization_kernel = torch.bmm((u * sqrt_s_effective), v.permute(0, 2, 1))
 
     # normalized features
-    normalized_features = torch.bmm(unbiased_features.permute(0, 2, 1), u).permute(0, 2, 1)
-    normalized_features = (normalized_features.permute(0, 2, 1) * sqrt_inv_s_effective).permute(0, 2, 1)
-    normalized_features = torch.bmm(normalized_features.permute(0, 2, 1), v.permute(0, 2, 1)).permute(0, 2, 1)
+    normalized_features = torch.bmm(u.permute(0, 2, 1), unbiased_features)
+    normalized_features = sqrt_inv_s_effective.permute(0, 2, 1) * normalized_features
+    normalized_features = torch.bmm(v, normalized_features)
     normalized_features = normalized_features.view(shape)
-
     return normalized_features, colorization_kernel, mean_features
 
 def zca_colorization(normalized_features, colorization_kernel, mean_features):

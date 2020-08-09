@@ -68,6 +68,7 @@ data_transforms = {
     ]),
 }
 
+
 class FlatFolderDataset(torch.utils.data.Dataset):
     def __init__(self, root, transform):
         super(FlatFolderDataset, self).__init__()
@@ -86,6 +87,7 @@ class FlatFolderDataset(torch.utils.data.Dataset):
 
     def name(self):
         return 'FlatFolderDataset'
+
 
 def InfiniteSampler(n):
     # i = 0
@@ -110,6 +112,7 @@ class InfiniteSamplerWrapper(torch.utils.data.sampler.Sampler):
     def __len__(self):
         return 2 ** 31
 
+
 content_set = FlatFolderDataset(args.content_dir, data_transforms['train'])
 style_set = FlatFolderDataset(args.style_dir, data_transforms['train'])
 
@@ -125,29 +128,31 @@ style_loader = torch.utils.data.DataLoader(
 content_iter = iter(content_loader)
 style_iter = iter(style_loader)
 
+
 def get_optimizer(model):
-    
     for param in model.encode.parameters():
         param.requires_grad = False
-    
+
     for param in model.transformer.savanet4_1.self_attn.parameters():
         param.requires_grad = False
-    
+
     for param in model.transformer.savanet5_1.self_attn.parameters():
         param.requires_grad = False
-    
+
     optimizer = torch.optim.Adam([
         {'params': model.decode.parameters()},
         {'params': model.transformer.parameters()},
     ], lr=args.lr)
     return optimizer
 
+
 def state_to_device(parameter, device):
     state_dict = parameter.state_dict()
     for key in state_dict.keys():
         state_dict[key] = state_dict[key].to(device)
     parameter.cuda()
-        
+
+
 encoder = vgg
 encoder.load_state_dict(torch.load(args.vgg_model))
 state_to_device(encoder, device)
@@ -155,18 +160,18 @@ state_to_device(encoder, device)
 self_attn = SelfAttention()
 self_attn.load_state_dict(torch.load(args.attn_model))
 state_to_device(self_attn, device)
-transformer = Transform(in_channel = 512, self_attn=self_attn, alpha=args.alpha, filter=args.filter)
+transformer = Transform(in_channel=512, self_attn=self_attn, alpha=args.alpha, filter=args.filter)
 
 decoder = vgg_reverse
 
-if(args.start_iter > 0):
+if (args.start_iter > 0):
 
     decoder.load_state_dict(torch.load(args.save_dir + '/decoder_iter_' + str(args.start_iter) + '.pth'))
     state_to_device(decoder, device)
-    
+
     transformer.load_state_dict(torch.load(args.save_dir + '/transformer_iter_' + str(args.start_iter) + '.pth'))
     state_to_device(transformer, device)
-    
+
     model = SAVA_test(transformer=transformer, encoder=encoder, decoder=decoder)
     optimizer = get_optimizer(model)
     optimizer.load_state_dict(torch.load(args.save_dir + '/optimizer_iter_' + str(args.start_iter) + '.pth'))
@@ -178,19 +183,22 @@ else:
     model = SAVA_test(transformer=transformer, encoder=encoder, decoder=decoder)
     optimizer = get_optimizer(model)
 
-model.to(device)   
+model.to(device)
 loss_seq = {'total': [], 'content': [], 'style': [], 'identity1': [], 'identity2': []}
+
 
 def lastest_arverage_value(values, length=100):
     if len(values) < length:
         length = len(values)
-    return sum(values[-length:])/length
+    return sum(values[-length:]) / length
+
 
 def adjust_learning_rate(optimizer, iteration_count):
     """Imitating the original implementation"""
     lr = args.lr / (1.0 + args.lr_decay * iteration_count)
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
+
 
 content_reload_period = len(content_loader.dataset) / args.batch_size
 content_reload_period = math.floor(content_reload_period)
@@ -199,64 +207,71 @@ style_reload_period = len(style_loader.dataset) / args.batch_size
 style_reload_period = math.floor(style_reload_period)
 print(args.batch_size)
 for i in tqdm(range(args.start_iter, args.max_iter)):
-    adjust_learning_rate(optimizer, iteration_count=i)
-    
-    if (i - args.start_iter)%content_reload_period == 0:
-        content_loader = torch.utils.data.DataLoader(
-            content_set, batch_size=args.batch_size,
-            sampler=InfiniteSamplerWrapper(content_set),
-            num_workers=args.n_threads)
-        content_iter = iter(content_loader)
-    
-    if (i - args.start_iter)%style_reload_period == 0:
-        style_loader = torch.utils.data.DataLoader(
-            style_set, batch_size=args.batch_size,
-            sampler=InfiniteSamplerWrapper(style_set),
-            num_workers=args.n_threads)
-        style_iter = iter(style_loader)
-    
-    content_images = next(content_iter).to(device)
-    style_images = next(style_iter).to(device)
-    losses = model(content_images, style_images)
-        
-    total_loss = losses['total']
-    
-    for name, vals in loss_seq.items():
-        loss_seq[name].append(losses[name].item())
+    try:
+        adjust_learning_rate(optimizer, iteration_count=i)
 
-    if (total_loss != total_loss).any():
+        if (i - args.start_iter) % content_reload_period == 0:
+            content_loader = torch.utils.data.DataLoader(
+                content_set, batch_size=args.batch_size,
+                sampler=InfiniteSamplerWrapper(content_set),
+                num_workers=args.n_threads)
+            content_iter = iter(content_loader)
+
+        if (i - args.start_iter) % style_reload_period == 0:
+            style_loader = torch.utils.data.DataLoader(
+                style_set, batch_size=args.batch_size,
+                sampler=InfiniteSamplerWrapper(style_set),
+                num_workers=args.n_threads)
+            style_iter = iter(style_loader)
+
+        content_images = next(content_iter).to(device)
+        style_images = next(style_iter).to(device)
+        losses = model(content_images, style_images)
+
+        total_loss = losses['total']
+
+        for name, vals in loss_seq.items():
+            loss_seq[name].append(losses[name].item())
+
+        if (total_loss != total_loss).any():
+            i -= 1
+            continue
+
+        optimizer.zero_grad()
+        total_loss.backward()
+        optimizer.step()
+
+        if (i + 1) % args.save_model_interval == 0 or (i + 1) == args.max_iter:
+            print(
+                "%s: Iteration: [%d/%d]\tRecon Loss: %2.4f\tStyle Loss: %2.4f\tIdentity1 Loss: %2.4f\Identity2 Loss: %2.4f\tTotal: %2.4f" % (
+                time.ctime(), i + 1,
+                args.max_iter, lastest_arverage_value(loss_seq['content']), lastest_arverage_value(loss_seq['style']),
+                lastest_arverage_value(loss_seq['identity1']), lastest_arverage_value(loss_seq['identity2']),
+                lastest_arverage_value(loss_seq['total'])))
+
+            state_dict = model.decode.state_dict()
+            for key in state_dict.keys():
+                state_dict[key] = state_dict[key].to(torch.device('cpu'))
+            torch.save(state_dict,
+                       '{:s}/decoder_iter_{:d}.pth'.format(args.save_dir,
+                                                           i + 1))
+            state_dict = model.transformer.state_dict()
+            for key in state_dict.keys():
+                state_dict[key] = state_dict[key].to(torch.device('cpu'))
+            torch.save(state_dict,
+                       '{:s}/transformer_iter_{:d}.pth'.format(args.save_dir,
+                                                               i + 1))
+            state_dict = optimizer.state_dict()
+            torch.save(state_dict,
+                       '{:s}/optimizer_iter_{:d}.pth'.format(args.save_dir,
+                                                             i + 1))
+
+            with open(args.save_dir + "/losses.json", 'w') as f:
+                json.dump(loss_seq, f)
+
+    except (Image.DecompressionBombError, RuntimeError):
         i -= 1
         continue
 
 
-    optimizer.zero_grad()
-    total_loss.backward()
-    optimizer.step()
-    
-    if (i + 1) % args.save_model_interval == 0 or (i + 1) == args.max_iter:
-        print("%s: Iteration: [%d/%d]\tRecon Loss: %2.4f\tStyle Loss: %2.4f\tIdentity1 Loss: %2.4f\Identity2 Loss: %2.4f\tTotal: %2.4f"%(time.ctime(),i+1, 
-                args.max_iter, lastest_arverage_value(loss_seq['content']), lastest_arverage_value(loss_seq['style']), 
-                lastest_arverage_value(loss_seq['identity1']), lastest_arverage_value(loss_seq['identity2']), lastest_arverage_value(loss_seq['total'])))
-
-        state_dict = model.decode.state_dict()
-        for key in state_dict.keys():
-            state_dict[key] = state_dict[key].to(torch.device('cpu'))
-        torch.save(state_dict,
-                    '{:s}/decoder_iter_{:d}.pth'.format(args.save_dir,
-                                                            i + 1))
-        state_dict = model.transformer.state_dict()
-        for key in state_dict.keys():
-            state_dict[key] = state_dict[key].to(torch.device('cpu'))
-        torch.save(state_dict,
-                    '{:s}/transformer_iter_{:d}.pth'.format(args.save_dir,
-                                                            i + 1))
-        state_dict = optimizer.state_dict()
-        torch.save(state_dict,
-                    '{:s}/optimizer_iter_{:d}.pth'.format(args.save_dir,
-                                                            i + 1))
-        
-        with open(args.save_dir + "/losses.json", 'w') as f:
-            json.dump(loss_seq, f)
-    
-    
 

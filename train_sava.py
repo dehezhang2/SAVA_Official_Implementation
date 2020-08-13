@@ -44,7 +44,7 @@ parser.add_argument('--lr_decay', type=float, default=5e-5)
 parser.add_argument('--max_iter', type=int, default=200000)
 parser.add_argument('--batch_size', type=int, default=4)
 parser.add_argument('--n_threads', type=int, default=16)
-parser.add_argument('--save_model_interval', type=int, default=1000)
+parser.add_argument('--save_model_interval', type=int, default=2000)
 parser.add_argument('--start_iter', type=int, default=0)
 
 # hyperparameters
@@ -269,7 +269,7 @@ for i in tqdm(range(args.start_iter, args.max_iter)):
             with open(args.save_dir + "/losses.json", 'w') as f:
                 json.dump(loss_seq, f)
 
-    except (Image.DecompressionBombError, RuntimeError):
+    except (Image.DecompressionBombError):
         i -= 1
         continue
 

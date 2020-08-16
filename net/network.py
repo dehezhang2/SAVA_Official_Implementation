@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torchvision
 import net.utils as utils
+import torch.nn.functional as F
 FEATURE_CHANNEL = 512
 
 vgg = nn.Sequential(
@@ -271,15 +272,12 @@ class SAVANet(nn.Module):
         # torch.cuda.empty_cache()
         # del atten_y_mask
         # torch.cuda.empty_cache()
-        print(correlation.get_device())
+        # print(correlation.get_device())
         # correlation = self.alpha * feature_correlation + (1 - self.alpha) * attention_correlation
-        correlation_mask = correlation_mask.cpu()
-        correlation = correlation.cpu()
+        # correlation_mask = correlation_mask.cpu()
+        # correlation = correlation.cpu()
         correlation = correlation_mask * correlation
-        # correlation = correlation / correlation.sum(dim=2, keepdim=True)
-        print(correlation.get_device())
-        
-        correlation = correlation.cuda()
+        correlation = F.normalize(correlation, p=1, dim=2)
 
         h = utils.hw_flatten(self.h(y)) # [b, c, ns]
 

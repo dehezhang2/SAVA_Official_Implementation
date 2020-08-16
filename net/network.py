@@ -197,16 +197,21 @@ class SAVANet(nn.Module):
         attention_map = attention_map / torch.max(attention_map)
         return attention_map
 
-    # def attn_corr(self, x, y):
-    #     x = torch.reshape(x, (x.shape[0], x.shape[1], -1))
-    #     y = torch.reshape(y, (y.shape[0], y.shape[1], -1))
-    #     n_x = x.shape[-1]
-    #     n_y = y.shape[-1]
-    #     x = x.repeat(1, n_y, 1).permute(0, 2, 1)
-    #     y = y.repeat(1, n_x, 1)
-    #     dist = torch.abs(x - y)
-    #     correlation = self.softmax(1.0 - dist)
-    #     return correlation
+    def attn_corr(self, x, y):
+        x = x - torch.min(x)
+        x = x * 1.0 / torch.max(x)
+        x = torch.reshape(x, (x.shape[0], x.shape[1], -1))
+
+        y = y - torch.min(y)
+        y = y * 1.0 / torch.max(y)
+        y = torch.reshape(y, (y.shape[0], y.shape[1], -1))
+        n_x = x.shape[-1]
+        n_y = y.shape[-1]
+        x = x.repeat(1, n_y, 1).permute(0, 2, 1)
+        y = y.repeat(1, n_x, 1)
+        dist = torch.abs(x - y)
+        correlation = self.softmax(1.0 - dist)
+        return correlation
 
     def attn_mask(self, x):
         x_size = x.shape
@@ -236,7 +241,7 @@ class SAVANet(nn.Module):
         x_norm_zca, _, _ = utils.project_features(x, "ZCA")
         y_norm_zca, _, _ = utils.project_features(y, "ZCA")
 
-        correlation, _ = self.feat_corr(x_norm_adain, y_norm_adain)
+        feature_correlation, _ = self.feat_corr(x_norm_adain, y_norm_adain)
 
         _, atten_x = self.self_attn(x_norm_zca)
         _, atten_y = self.self_attn(y_norm_zca)
@@ -256,28 +261,10 @@ class SAVANet(nn.Module):
             atten_y = self.attention_filter(atten_y)
             atten_x /= atten_x.sum()
             atten_y /= atten_y.sum()
-        
-        # attention_correlation = self.attn_corr(atten_x, atten_y)
-        # atten_x_mask = (atten_x > 0.0001).type(torch.cuda.FloatTensor)
-        # atten_y_mask = (atten_y > 0.0001).type(torch.cuda.FloatTensor)
-        atten_x_mask = self.attn_mask(atten_x)
-        atten_y_mask = self.attn_mask(atten_y)
-        correlation_mask = self.corr_mask(atten_x_mask, atten_y_mask)
-        # del atten_x
-        # torch.cuda.empty_cache()
-        # del atten_y
-        # torch.cuda.empty_cache()
 
-        # del atten_x_mask
-        # torch.cuda.empty_cache()
-        # del atten_y_mask
-        # torch.cuda.empty_cache()
-        # print(correlation.get_device())
-        # correlation = self.alpha * feature_correlation + (1 - self.alpha) * attention_correlation
-        # correlation_mask = correlation_mask.cpu()
-        # correlation = correlation.cpu()
-        correlation = correlation_mask * correlation
-        correlation = F.normalize(correlation, p=1, dim=2)
+
+        attention_correlation = self.attn_corr(atten_x, atten_y)
+        correlation = self.alpha * feature_correlation + (1 - self.alpha) * attention_correlation
 
         h = utils.hw_flatten(self.h(y)) # [b, c, ns]
 

@@ -197,16 +197,16 @@ class SAVANet(nn.Module):
         attention_map = attention_map / torch.max(attention_map)
         return attention_map
 
-    def attn_corr(self, x, y):
-        x = torch.reshape(x, (x.shape[0], x.shape[1], -1))
-        y = torch.reshape(y, (y.shape[0], y.shape[1], -1))
-        n_x = x.shape[-1]
-        n_y = y.shape[-1]
-        x = x.repeat(1, n_y, 1).permute(0, 2, 1)
-        y = y.repeat(1, n_x, 1)
-        dist = torch.abs(x - y)
-        correlation = self.softmax(1.0 - dist)
-        return correlation
+    # def attn_corr(self, x, y):
+    #     x = torch.reshape(x, (x.shape[0], x.shape[1], -1))
+    #     y = torch.reshape(y, (y.shape[0], y.shape[1], -1))
+    #     n_x = x.shape[-1]
+    #     n_y = y.shape[-1]
+    #     x = x.repeat(1, n_y, 1).permute(0, 2, 1)
+    #     y = y.repeat(1, n_x, 1)
+    #     dist = torch.abs(x - y)
+    #     correlation = self.softmax(1.0 - dist)
+    #     return correlation
 
     def attn_mask(self, x):
         x_size = x.shape

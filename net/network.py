@@ -3,6 +3,7 @@ import torch.nn as nn
 import torchvision
 import net.utils as utils
 import torch.nn.functional as F
+from kmeans_pytorch import kmeans, kmeans_predict
 FEATURE_CHANNEL = 512
 
 vgg = nn.Sequential(
@@ -198,7 +199,21 @@ class SAVANet(nn.Module):
         return attention_map
 
     def attn_corr(self, x, y):
+        # x = torch.reshape(x, (x.shape[0], x.shape[1], -1))
+        # y = torch.reshape(y, (y.shape[0], y.shape[1], -1))
+        # n_x = x.shape[-1]
+        # n_y = y.shape[-1]
+        # x = x.repeat(1, n_y, 1).permute(0, 2, 1)
+        # y = y.repeat(1, n_x, 1)
+        # dist = torch.abs(x - y)
+        # correlation = self.softmax(1.0 - dist)
+        # return correlation
+        x = x - torch.min(x)
+        x = x * 1.0 / torch.max(x)
         x = torch.reshape(x, (x.shape[0], x.shape[1], -1))
+
+        y = y - torch.min(y)
+        y = y * 1.0 / torch.max(y)
         y = torch.reshape(y, (y.shape[0], y.shape[1], -1))
         n_x = x.shape[-1]
         n_y = y.shape[-1]
@@ -208,14 +223,21 @@ class SAVANet(nn.Module):
         correlation = self.softmax(1.0 - dist)
         return correlation
 
+    # def attn_mask(self, x):
+    #     x_size = x.shape
+    #     x = x.reshape(x_size[0], x_size[1], -1)
+    #     _, indices = x.topk(int(x.shape[2] * 0.825), dim=2, largest=False, sorted=True)
+    #     attn = torch.ones(x.shape)
+    #     attn[:, :, indices] = 0
+    #     attn = attn.view(x_size).type(torch.cuda.FloatTensor)
+    #     return attn
+
     def attn_mask(self, x):
-        x_size = x.shape
-        x = x.reshape(x_size[0], x_size[1], -1)
-        _, indices = x.topk(int(x.shape[2] * 0.925), dim=2, largest=False, sorted=True)
-        attn = torch.ones(x.shape)
-        attn[:, :, indices] = 0
-        attn = attn.view(x_size).type(torch.cuda.FloatTensor)
-        return attn
+        attention_map_stretched = x.view(x.shape[2] * x.shape[3], 1)
+        var = torch.randn(attention_map_stretched.shape, device='cuda') * 0.0001
+        attention_mask, _ = kmeans(attention_map_stretched + var, num_clusters=2, device=torch.device('cuda:0'))
+        attention_mask = attention_mask.view(x.shape).type(torch.cuda.FloatTensor)
+        return attention_mask
     
     def corr_mask(self, x, y):
         x = torch.reshape(x, (x.shape[0], x.shape[1], -1))
@@ -250,7 +272,6 @@ class SAVANet(nn.Module):
         del y_norm_zca
         torch.cuda.empty_cache()
 
-
         if self.filter:
             atten_x = self.attention_filter(atten_x)
             atten_y = self.attention_filter(atten_y)
@@ -263,19 +284,11 @@ class SAVANet(nn.Module):
         atten_x_mask = self.attn_mask(atten_x)
         atten_y_mask = self.attn_mask(atten_y)
         correlation_mask = self.corr_mask(atten_x_mask, atten_y_mask)
-        # del atten_x
-        # torch.cuda.empty_cache()
-        # del atten_y
-        # torch.cuda.empty_cache()
 
-        # del atten_x_mask
-        # torch.cuda.empty_cache()
-        # del atten_y_mask
-        # torch.cuda.empty_cache()
-        # print(correlation.get_device())
-        # correlation = self.alpha * feature_correlation + (1 - self.alpha) * attention_correlation
-        # correlation_mask = correlation_mask.cpu()
-        # correlation = correlation.cpu()
+        # attention_correlation = self.attn_corr(atten_x, atten_y)
+        # correlation = self.alpha * correlation + (1 - self.alpha) * attention_correlation
+
+        
         correlation = correlation_mask * correlation
         correlation = F.normalize(correlation, p=1, dim=2)
 
